@@ -10,12 +10,25 @@
 #independent contracts, train with each of them, simulate with one contract at a time
 
 import numpy
+from data_loaders import *
 
-def get_data(cleandata):
-	for line in lines:
-		get info and yield
+def get_data(cleandata, is_buy):
+	for file in generate_data(read, is_buy, slice_size=1):
+        for line in file:
+            yield line
 
-def qlearning(states, actions, discountrate, learningrate):
+
+def simulate(qlearning, is_buy):
+	rewards = 0
+	for time in time_horizon:	
+		data = get_data(cleandata, is_buy) # get market data from the current time
+		best_action, qvals = qlearning(data, states, actions, discountrate=0.1, learningrate=0.1) #pick best action from qvals corresponding to current state, execute
+		rewards += qvals[(curr_state, best_action)]
+	# bucketize states (volume left to sell) logarithmically
+
+
+# Split into another file       
+def qlearning(data, states, actions, discountrate, learningrate):
 	qvals = {}
 	for state in states:
 		for action in actions:
@@ -32,12 +45,3 @@ def qlearning(states, actions, discountrate, learningrate):
 		qvals[(s,a)] = (1-learningrate)*qvals[(s,a)]+learningrate*(r+discountrate*highest_qval)
 		s = s_prime
 	return (best_action,qvals)
-
-def simulate(qlearning):
-	rewards = 0
-	for time in time_horizon:	
-		states, actions = get_data(cleandata) #get market data from the current time
-		best_action, qvals = qlearning(states, actions, discountrate=0.1, learningrate=0.1) #pick best action from qvals corresponding to current state, execute
-		rewards += qvals[(curr_state, best_action)]
-	# bucketize states (volume left to sell) logarithmically
-

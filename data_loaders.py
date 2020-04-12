@@ -6,6 +6,17 @@ import glob
 
 SAMPLE_PATH = 'data/order_books/2011/IF1101.csv'
 
+def read(path, is_buy=False, no_obs=None, slice_size=50):
+    df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
+    price = (df['S1'] + df['B1']) / 2
+    df['price'] = price
+    num_slices = int(no_obs / slice_size)
+    if is_buy:
+        new_df = pd.DataFrame(df, columns=['B1', 'B2', 'B3', 'B4', 'B5', 'BV1', 'BV2', 'BV3', 'BV4', 'BV5', 'price'])
+    else:
+        new_df = pd.DataFrame(df, columns=['S1', 'S2', 'S3', 'S4', 'S5', 'SV1', 'SV2', 'SV3', 'SV4', 'SV5', 'price'])
+    return [new_df.iloc[n*slice_size:(n+1)*slice_size, :] for n in range(num_slices)]
+        
 def read_scale(path, no_obs=None, slice_size=50):
     df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
     a = np.hstack([df.shift(x) for x in range(slice_size)])[slice_size:,]
