@@ -12,6 +12,7 @@
 import numpy
 import random
 import math
+import matplotlib.pyplot as plt
 from data_loaders import *
 
 num_actions = 5
@@ -20,6 +21,7 @@ num_volumes = 5
 total_volume = 10000  # make entrypoint later to get these values
 time_horizon = 1000
 is_buy = True
+actions = []
 
 
 def get_data(is_buy, time_horizon):
@@ -28,13 +30,17 @@ def get_data(is_buy, time_horizon):
 			yield slice.iloc[:, 0:5], slice.iloc[:, 5:10], slice.iloc[:, 10]
 
 
-def simulate(qlearning, is_buy):
+def simulate(algo, is_buy, qvals=None):
 	rewards = 0
-	for time in range(time_horizon):
-		prices, volumes, midpoint = get_data(is_buy, time_horizon) # get market data from the current time
-		best_action, qvals = qlearning(prices, volumes, midpoint, discountrate=0.1, learningrate=0.1) #pick best action from qvals corresponding to current state, execute
-		rewards += qvals[(curr_state, best_action)]
-	# bucketize states (volume left to sell) logarithmically
+	volume_left = total_volume
+	data_gen = get_data(is_buy, time_horizon)
+	for time_left in range(time_horizon-1, -1, -1):
+		prices, volumes, midpoint = next(data_gen) # get market data from the current time
+		ix = time_horizon - time_left - 1
+		action = algo(prices, volumes, midpoint, time_left, volume_left, qvals)
+		cur_reward, volume_left = reward(action, prices.iloc[ix], volumes.iloc[ix], midpoint.iloc[ix], volume_left)
+		rewards += cur_reward
+	return rewards, volume_left
 
 
 def reward(action, prices, volumes, midpoint, volume_left):
@@ -67,12 +73,13 @@ qvals = np.asarray([[[0, 1, 2],
 def select_action(state, qvals):
 	epsilon = 0.1
 	rand = random.uniform(0, 1)
-	if state[0] == 0:
-		action = num_actions-1
-	elif rand < epsilon:
+	# if state[0] == 0:
+	# 	action = num_actions-1
+	if rand < epsilon:
 		action = random.randint(0, num_actions-1) #inclusive
 	else:
 		action = np.argmax(qvals[state[0]][state[1]]) # numpy
+	actions.append(action)
 	return action
 
 
@@ -85,6 +92,13 @@ def execute(action, prices, volumes, midpoint, time_left, volume_left):
 	r, volume_left = reward(action, prices, volumes, midpoint, volume_left)
 	v = math.ceil(volume_left / total_volume * num_volumes) - 1
 	return r, (t, v), time_left, volume_left
+
+
+def qlearning_test(prices, volumes, midpoint, time_left, volume_left, qvals):
+	t = math.ceil(time_left / time_horizon * num_times) - 1
+	v = math.ceil(volume_left / total_volume * num_volumes) - 1
+	return np.argmax(qvals[t][v])
+
 
 # Split into another file       
 def qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals):
@@ -106,7 +120,7 @@ def qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals):
 		s = s_prime
 		'''
 		i = time_horizon - time_left
-		a = select_action(s,qvals)  # choose an action according to some algorithm, like epsilon-greedy
+		a = select_action(s, qvals)  # choose an action according to some algorithm, like epsilon-greedy
 		# get a reward and go to state s_prime after you execute action a
 		r, s_prime, time_left, volume_left = execute(a, prices.iloc[i], volumes.iloc[i], midpoint.iloc[i],
 													 time_left, volume_left)
@@ -122,10 +136,19 @@ def training(discountrate, learningrate):
 	num_runs = 100
 	data_gen = get_data(is_buy, time_horizon)
 	for i in range(num_runs): # train on contiguous blocks of data
+		# global actions
+		# actions = []
 		print(f"Training run {i}")
 		prices, volumes, midpoint = next(data_gen) # get market data from the current time
 		qvals = qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals)
 		print(qvals)
+	# actions_np = np.asarray(actions)
+	# n, bins, patches = plt.hist(actions_np, facecolor='blue', alpha=0.5)
+	# plt.show()
+	np.save("qvals", qvals)
 	return qvals
 
-qvals = training(discountrate=0.1, learningrate=0.6)
+# training(discountrate=0.1, learningrate=0.6)
+
+qvals = np.load("qvals.npy")
+print(simulate(qlearning_test, is_buy, qvals))
