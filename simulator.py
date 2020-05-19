@@ -78,7 +78,8 @@ def select_action(state, qvals):
 	if rand < epsilon:
 		action = random.randint(0, num_actions-1) #inclusive
 	else:
-		action = np.argmax(qvals[state[0]][state[1]]) # numpy
+		all_qvals = qvals[state[0]][state[1]]
+		action = np.random.choice(np.flatnonzero(all_qvals == all_qvals.max()))
 	actions.append(action)
 	return action
 
