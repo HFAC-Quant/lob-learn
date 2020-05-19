@@ -109,6 +109,11 @@ def qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals):
 	time_left = time_horizon
 	volume_left = total_volume
 
+	qvals[0][4][0] -= 1000
+	qvals[0][4][1] -= 1000
+	qvals[0][4][2] -= 1000
+	qvals[0][4][3] -= 1000
+
 	while time_left > 0 and volume_left > 0:
 		'''
 		action_q = []
@@ -127,8 +132,8 @@ def qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals):
 		highest_qval = np.argmax(qvals[s_prime[0]][s_prime[1]])
 		qvals[s[0]][s[1]][a] = (1-learningrate)*qvals[s[0]][s[1]][a]+learningrate*(r+discountrate*highest_qval)
 		s = s_prime
-	if volume_left > 0:
-		qvals[s[0]][s[1]] -= 1000
+	# if volume_left > 0:
+	# 	qvals[s[0]][s[1]] -= 1000
 	return qvals
 
 def training(discountrate, learningrate):
