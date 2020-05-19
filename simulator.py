@@ -113,6 +113,10 @@ def qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals):
 	qvals[0][4][1] -= 1000
 	qvals[0][4][2] -= 1000
 	qvals[0][4][3] -= 1000
+	qvals[0][3][0] -= 1000
+	qvals[0][3][1] -= 1000
+	qvals[0][3][2] -= 1000
+	qvals[0][3][3] -= 1000
 
 	while time_left > 0 and volume_left > 0:
 		'''
@@ -129,7 +133,7 @@ def qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals):
 		# get a reward and go to state s_prime after you execute action a
 		r, s_prime, time_left, volume_left = execute(a, prices.iloc[i], volumes.iloc[i], midpoint.iloc[i],
 													 time_left, volume_left)
-		highest_qval = np.argmax(qvals[s_prime[0]][s_prime[1]])
+		highest_qval = np.amax(qvals[s_prime[0]][s_prime[1]])
 		qvals[s[0]][s[1]][a] = (1-learningrate)*qvals[s[0]][s[1]][a]+learningrate*(r+discountrate*highest_qval)
 		s = s_prime
 	# if volume_left > 0:
