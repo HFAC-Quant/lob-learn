@@ -18,17 +18,22 @@ from data_loaders import *
 num_actions = 5
 num_times = 5
 num_volumes = 5
-total_volume = 10000  # make entrypoint later to get these values
-time_horizon = 1000
+total_volume = 200 #10000 # make entrypoint later to get these values
+time_horizon = 50 #1000
 is_buy = True
 actions = []
 
+# period = 30 #30 seconds
+# timedelta = .5 #time btw prices in order book
 
 def get_data(is_buy, time_horizon):
-	for file in generate_data(read, is_buy, slice_size=time_horizon):
-		for slice in file:
-			yield slice.iloc[:, 0:5], slice.iloc[:, 5:10], slice.iloc[:, 10]
-
+	for file in generate_data(read, is_buy, is_dp=True, slice_size=time_horizon):
+		if is_dp:
+			for slice in file:
+			yield slice.iloc[:, 0:11], slice.iloc[:, 11:21] #prices, volumes
+		else:
+			for slice in file:
+				yield slice.iloc[:, 0:5], slice.iloc[:, 5:10], slice.iloc[:, 10]
 
 def simulate(algo, is_buy, qvals=None):
 	rewards = 0
@@ -42,6 +47,18 @@ def simulate(algo, is_buy, qvals=None):
 		rewards += cur_reward
 	return rewards, volume_left
 
+def dp(is_buy, learningrate):
+	data_gen = get_data(is_buy, time_horizon)
+	midpoint = 0 # midpoint price at beginning of episode
+	for num_time in range(num_times):
+		prices, volumes, midpoint = next(data_gen) 
+		# midpoint = prices.iloc[]
+
+# 	c(x, a) = n/(n+1) c(x, a) +
+# 1/(n+1) [cim(x, a) + arg max c(y, p)]
+
+def reward2(midpoint,cur_cost):
+	return (cur_cost - midpoint)/midpoint * 10^4 #basis points
 
 def reward(action, prices, volumes, midpoint, volume_left):
 	'''
@@ -68,7 +85,6 @@ qvals = np.asarray([[[0, 1, 2],
 					[23, 24, 25],
 					[26, 27, 28]]])
 '''
-
 
 def select_action(state, qvals):
 	epsilon = 0.1
@@ -139,6 +155,7 @@ def qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals):
 		s = s_prime
 	# if volume_left > 0:
 	# 	qvals[s[0]][s[1]] -= 1000
+
 	return qvals
 
 def training(discountrate, learningrate):
@@ -146,19 +163,20 @@ def training(discountrate, learningrate):
 	num_runs = 100
 	data_gen = get_data(is_buy, time_horizon)
 	for i in range(num_runs): # train on contiguous blocks of data
-		# global actions
-		# actions = []
+		global actions
+		actions = []
 		print(f"Training run {i}")
 		prices, volumes, midpoint = next(data_gen) # get market data from the current time
 		qvals = qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals)
 		print(qvals)
-	# actions_np = np.asarray(actions)
-	# n, bins, patches = plt.hist(actions_np, facecolor='blue', alpha=0.5)
-	# plt.show()
+	actions_np = np.asarray(actions)
+	n, bins, patches = plt.hist(actions_np, facecolor='blue', alpha=0.5)
+	plt.show()
 	np.save("qvals", qvals)
 	return qvals
 
-# training(discountrate=0.1, learningrate=0.6)
+training(discountrate=0.1, learningrate=0.6)
 
-qvals = np.load("qvals.npy")
-print(simulate(qlearning_test, is_buy, qvals))
+# qvals = np.load("qvals.npy")
+# print(simulate(qlearning_test, is_buy, qvals))
+
