@@ -43,7 +43,7 @@ def simulate(algo, is_buy, qvals=None, optpolicy=None):
 	for time_left in range(time_horizon-1, -1, -1):
 		prices, volumes, midpoint = next(data_gen) # get market data from the current time
 		ix = time_horizon - time_left - 1
-		action = algo(prices, volumes, midpoint, time_left, volume_left, qvals, optpolicy, math.ceil(ix/time_horizon * num_times) - 1)
+		action = algo(prices, volumes, midpoint, time_left, volume_left, qvals, optpolicy, max(math.ceil(ix/time_horizon * num_times) - 1, 0))
 		cur_reward, volume_left = reward(action, prices.iloc[ix], volumes.iloc[ix], midpoint.iloc[ix], volume_left)
 		rewards += cur_reward
 	return rewards, volume_left
@@ -67,33 +67,60 @@ def dp(is_buy, learningrate):
 	volume_left = total_volume
 	time_left = time_horizon
 	ntable = np.zeros((num_times,num_volumes,num_actions))
-	for volume_bucket in range(1,num_volumes): #what if volume_left is > 0 but in the first vol bucket?
+	for volume_bucket in range(1,num_volumes): # what if vol_left is > 0 but in the first vol bucket?
 		for action in range(num_actions):
 			dptable[num_times][volume_bucket][action] = -10000 #potentially more precise if this is reward of trading volume_left at worst prices at time_horizon
-	prices, volumes, midpoint = next(data_gen) 
+	#TODO June 13 - increase penalty when volume_bucket is higher instead of -10k for every volume bucket
+	#TODO June 13 - for q-learning algo, make get_data data in the same order as is_dp
+	#TODO June 13 - deal with issue that at num_times - 1, we can't reach the volume_bucket 0 for num_times, which means action 0 will always be preferred because all actions are penalized the same and action 0 has 0 trading cost
+	prices, volumes, midpoint = next(data_gen)
+	print(prices.iloc[0])
+
 	for num_time in range(num_times - 1,-1,-1): #num_time is time that has elapsed (in buckets)
 		for volume_bucket in range(num_volumes):
-			for action in range(num_actions): #TODO: do all lines in thirty seconds - fixed
+			for action in range(num_actions):
+
+				if num_time == 1 and volume_bucket == 0:
+					print("HERE")
+
 				state = (num_time, volume_bucket)
-				print("shape midpoint:",midpoint.shape)
-				#TODO: midpoint is a series, likely some issue with slicing in get_data
+
 				cur_reward = 0
 				theoretical_price = midpoint.iloc[0]
 				volume_left = (volume_bucket + 1) * total_volume / num_volumes #top of volume bucket
+
+				# if num_time == 1 and volume_bucket == 0:
+				# 	print(f"Volume_left = {volume_left}")
+
 				action_price = prices.iloc[int(num_time * time_horizon / num_times), action]
+
 				for t in range(int(time_horizon/num_times)):
-					print("print this:", int(num_time * time_horizon / num_times) + t)
-					print("length of prices", len(prices))
 					cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t], volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price, volume_left)
 					cur_reward += cur_rew
-				new_vol_bucket = math.ceil(volume_left / total_volume * num_volumes) - 1
+					print(f"action_price = {action_price}")
+				new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
+
+				if num_time == num_times - 1:
+					print(f"volume left = {volume_left}")
+
+				# if num_time == 1 and volume_bucket == 0:
+			 	# 	print(f"new_vol_bucket = {new_vol_bucket}")
+
 				best_reward = np.amax(dptable[num_time + 1][new_vol_bucket])
-				n = float(ntable[num_time][volume_bucket][action])
-				print("cur reward, best reward:", cur_reward, best_reward)
-				dptable[num_time][volume_bucket][action] = n/(n+1) * dptable[num_time][volume_bucket][action] + 1/(n+1) * (cur_reward + best_reward)
+
+				# if num_time == 1 and volume_bucket == 0:
+				# 	print(f"best_reward = {best_reward}")
+
 				ntable[num_time][volume_bucket][action] += 1
+				n = float(ntable[num_time][volume_bucket][action])
+
+				dptable[num_time][volume_bucket][action] = n/(n+1) * dptable[num_time][volume_bucket][action] + 1/(n+1) * (cur_reward + best_reward)
+
+				# if num_time == 1 and volume_bucket == 0:
+				# 	print(f"Updated to {dptable[num_time][volume_bucket][action]}")
+
 			print("dptable:", dptable)
-	optpolicy = np.zeros((num_times,num_volumes),dtype=int)			
+	optpolicy = -np.ones((num_times,num_volumes),dtype=int)
 	for t in range(num_times):
 		for v in range(num_volumes):
 			optpolicy[t][v] = np.argmax(dptable[t][v]) #optimal action: 0 - 10
@@ -102,7 +129,7 @@ def dp(is_buy, learningrate):
 	return dptable, optpolicy
 
 def dp_action(prices, volumes, midpoint, time_left, volume_left, qvals, optpolicy, num_time):
-	volume_bucket = math.ceil(volume_left / total_volume * num_volumes) - 1
+	volume_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 	return optpolicy[num_time][volume_bucket]
 
 
@@ -144,17 +171,17 @@ def select_action(state, qvals):
 def execute(action, prices, volumes, midpoint, time_left, volume_left):
 	# compute the new state
 	time_left -= 1
-	t = math.ceil(time_left / time_horizon * num_times) - 1
+	t = max(math.ceil(time_left / time_horizon * num_times) - 1, 0)
 
 	# compute the reward and volume left
 	r, volume_left = reward(action, prices, volumes, midpoint, volume_left)
-	v = math.ceil(volume_left / total_volume * num_volumes) - 1
+	v = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 	return r, (t, v), time_left, volume_left
 
 
 def qlearning_test(prices, volumes, midpoint, time_left, volume_left, qvals):
-	t = math.ceil(time_left / time_horizon * num_times) - 1
-	v = math.ceil(volume_left / total_volume * num_volumes) - 1
+	t = max(math.ceil(time_left / time_horizon * num_times) - 1, 0)
+	v = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 	return np.argmax(qvals[t][v])
 
 
