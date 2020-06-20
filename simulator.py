@@ -18,7 +18,7 @@ from data_loaders import *
 num_actions = 11 #5
 num_times = 5
 num_volumes = 5
-total_volume = 200 #10000 # make entrypoint later to get these values
+total_volume = 2000 #10000 # make entrypoint later to get these values
 time_horizon = 50 #1000
 is_buy = True
 is_dp = True
@@ -26,6 +26,31 @@ actions = []
 
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
+
+
+#TEST RESULTS: 2012/IF1201
+# num_times = 5
+# num_volumes = 5
+# total_volume = 1000 
+# time_horizon = 50 
+
+# optpolicy: [[ 0  0  0  0  0]
+#  [ 7 10 10 10 10]
+#  [ 7  7  7  7 10]
+#  [ 0  0  1  1  4]
+#  [ 8  9  9  9  9]]
+
+# num_times = 5
+# num_volumes = 5
+# total_volume = 2000 
+# time_horizon = 50 
+# optpolicy: [[ 0  0  0  2  1]
+#  [10 10 10 10 10]
+#  [ 7  7 10 10 10]
+#  [ 0  3  4 10 10]
+#  [ 9  9 10 10 10]]
+
+# same optpolicy for 2012/IF1209, 2013/IF1301 (same parameters as above)
 
 def get_data(is_buy, time_horizon):
 	for file in generate_data(read, is_buy, is_dp=True, slice_size=time_horizon):
@@ -53,12 +78,22 @@ def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_bu
 	action is 0-4, where 0 is buy/sell at lowest level, 4 is buy/sell at highest level
 	'''
 	cur_reward = 0
-	for i in range(6,11):
-		if action_price >= prices.iloc[i]: #trade
-			cur_reward -= (prices.iloc[i] - midpoint)*min(volumes.iloc[i-1], volume_left) #assumes is_buy is true
-			volume_left -= min(volumes.iloc[i-1], volume_left)
-			if volume_left <= 0:
-				break
+	if is_buy:
+		newprices, newvolumes = prices.iloc[6:11], volumes.iloc[5:10]
+		for i in range(5): 
+			if action_price >= newprices.iloc[i]: #trade
+				cur_reward -= (newprices.iloc[i] - midpoint)*min(newvolumes.iloc[i], volume_left) #assumes is_buy is true
+				volume_left -= min(newvolumes.iloc[i], volume_left)
+				if volume_left <= 0:
+					break
+	else:
+		newprices, newvolumes = prices.iloc[4:-1:-1], volumes.iloc[4:-1:-1]
+		for i in range(5): 
+			if action_price <= newprices.iloc[i]:
+				cur_reward -= (midpoint - newprices.iloc[i])*min(newvolumes.iloc[i], volume_left)
+				volume_left -= min(newvolumes.iloc[i], volume_left)
+				if volume_left <= 0:
+					break
 	return cur_reward/midpoint, volume_left
 
 def dp(is_buy, learningrate):
@@ -69,9 +104,7 @@ def dp(is_buy, learningrate):
 	ntable = np.zeros((num_times,num_volumes,num_actions))
 	for volume_bucket in range(1,num_volumes): # what if vol_left is > 0 but in the first vol bucket?
 		for action in range(num_actions):
-			dptable[num_times][volume_bucket][action] = -10000 #potentially more precise if this is reward of trading volume_left at worst prices at time_horizon
-	#TODO June 13 - increase penalty when volume_bucket is higher instead of -10k for every volume bucket
-	#TODO June 13 - for q-learning algo, make get_data data in the same order as is_dp
+			dptable[num_times][volume_bucket][action] = -2000 * volume_bucket #potentially more precise if this is reward of trading volume_left at worst prices at time_horizon
 	#TODO June 13 - deal with issue that at num_times - 1, we can't reach the volume_bucket 0 for num_times, which means action 0 will always be preferred because all actions are penalized the same and action 0 has 0 trading cost
 	prices, volumes, midpoint = next(data_gen)
 	print(prices.iloc[0])

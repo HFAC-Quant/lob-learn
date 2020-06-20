@@ -12,13 +12,10 @@ def read(path, is_buy=True, is_dp=True, no_obs=None, slice_size=50):
     price = (df['S1'] + df['B1']) / 2
     df['price'] = price
     num_slices = int(no_obs / slice_size) if no_obs else int(df.shape[0] / slice_size)
-    if is_dp:
-        new_df = pd.DataFrame(df, columns=['B5', 'B4', 'B3', 'B2', 'B1', 'price', 'S1', 'S2', 'S3', 'S4', 'S5', 'BV5',
+    new_df = pd.DataFrame(df, columns=['B5', 'B4', 'B3', 'B2', 'B1', 'price', 'S1', 'S2', 'S3', 'S4', 'S5', 'BV5',
                                            'BV4', 'BV3', 'BV2', 'BV1', 'SV1', 'SV2', 'SV3', 'SV4', 'SV5', 'price'])
-    elif is_buy:
-        new_df = pd.DataFrame(df, columns=['B1', 'B2', 'B3', 'B4', 'B5', 'BV1', 'BV2', 'BV3', 'BV4', 'BV5', 'price'])
-    else:   
-        new_df = pd.DataFrame(df, columns=['S1', 'S2', 'S3', 'S4', 'S5', 'SV1', 'SV2', 'SV3', 'SV4', 'SV5', 'price'])
+        #new_df = pd.DataFrame(df, columns=['B1', 'B2', 'B3', 'B4', 'B5', 'BV1', 'BV2', 'BV3', 'BV4', 'BV5', 'price'])
+        #new_df = pd.DataFrame(df, columns=['S1', 'S2', 'S3', 'S4', 'S5', 'SV1', 'SV2', 'SV3', 'SV4', 'SV5', 'price'])
     return [new_df.iloc[n*slice_size:(n+1)*slice_size, :] for n in range(num_slices)]
         
 def read_scale(path, no_obs=None, slice_size=50):
