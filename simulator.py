@@ -24,6 +24,9 @@ is_buy = True
 is_dp = True
 actions = []
 
+# TODO June 20: Keep updating same DP table with different datasets until the DP table converges
+# TODO June 20: why are the optpolicies diff btw computers but same btw datsets on the same computer?
+
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
 
@@ -51,6 +54,13 @@ actions = []
 #  [ 9  9 10 10 10]]
 
 # same optpolicy for 2012/IF1209, 2013/IF1301 (same parameters as above)
+
+# IF 1005: 
+# [[ 5  5  5  5  5]  
+# [10 10 10 10 10]  
+# [ 6  6  6  6  6]  
+# [ 0  0  0  0  0]  
+# [ 0  0  0  0  0]]
 
 def get_data(is_buy, time_horizon):
 	for file in generate_data(read, is_buy, is_dp=True, slice_size=time_horizon):
@@ -105,16 +115,15 @@ def dp(is_buy, learningrate):
 	for volume_bucket in range(1,num_volumes): # what if vol_left is > 0 but in the first vol bucket?
 		for action in range(num_actions):
 			dptable[num_times][volume_bucket][action] = -2000 * volume_bucket #potentially more precise if this is reward of trading volume_left at worst prices at time_horizon
-	#TODO June 13 - deal with issue that at num_times - 1, we can't reach the volume_bucket 0 for num_times, which means action 0 will always be preferred because all actions are penalized the same and action 0 has 0 trading cost
 	prices, volumes, midpoint = next(data_gen)
-	print(prices.iloc[0])
+	print(prices.iloc[0:5], volumes.iloc[0:5], midpoint[0:5])
 
 	for num_time in range(num_times - 1,-1,-1): #num_time is time that has elapsed (in buckets)
 		for volume_bucket in range(num_volumes):
 			for action in range(num_actions):
 
-				if num_time == 1 and volume_bucket == 0:
-					print("HERE")
+				# if num_time == 1 and volume_bucket == 0:
+				# 	print("HERE")
 
 				state = (num_time, volume_bucket)
 
@@ -130,11 +139,11 @@ def dp(is_buy, learningrate):
 				for t in range(int(time_horizon/num_times)):
 					cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t], volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price, volume_left)
 					cur_reward += cur_rew
-					print(f"action_price = {action_price}")
+					#print(f"action_price = {action_price}")
 				new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 
-				if num_time == num_times - 1:
-					print(f"volume left = {volume_left}")
+				# if num_time == num_times - 1:
+				# 	print(f"volume left = {volume_left}")
 
 				# if num_time == 1 and volume_bucket == 0:
 			 	# 	print(f"new_vol_bucket = {new_vol_bucket}")
