@@ -33,7 +33,8 @@ def generate_data(function, *args, **kwargs):
     # Find all csv files in data/order_books
     os.chdir( 'data/order_books/' )
     PATHS = ['data/order_books/' +  x
-              for x in glob.glob( '*/**.csv' )]
+              for x in glob.glob( '*/**.csv' )]  
+    #print(f"PATHS: {sorted(PATHS)}")
     os.chdir( '../..' )
-    for t in PATHS:
+    for t in sorted(PATHS):
         yield function(t, *args, **kwargs)

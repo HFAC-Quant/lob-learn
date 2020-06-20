@@ -25,7 +25,8 @@ is_dp = True
 actions = []
 
 # TODO June 20: Keep updating same DP table with different datasets until the DP table converges
-# TODO June 20: why are the optpolicies diff btw computers but same btw datsets on the same computer?
+# TODO June 20: Compare DP against q-learning against set and leave
+# TODO June 20: Use Keras/diff model
 
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
@@ -116,7 +117,7 @@ def dp(is_buy, learningrate):
 		for action in range(num_actions):
 			dptable[num_times][volume_bucket][action] = -2000 * volume_bucket #potentially more precise if this is reward of trading volume_left at worst prices at time_horizon
 	prices, volumes, midpoint = next(data_gen)
-	print(prices.iloc[0:5], volumes.iloc[0:5], midpoint[0:5])
+	#print(prices.iloc[0:5], volumes.iloc[0:5], midpoint[0:5])
 
 	for num_time in range(num_times - 1,-1,-1): #num_time is time that has elapsed (in buckets)
 		for volume_bucket in range(num_volumes):
@@ -177,6 +178,7 @@ def dp_action(prices, volumes, midpoint, time_left, volume_left, qvals, optpolic
 
 dptable, optpolicy = dp(is_buy=True, learningrate=0.6)
 print(simulate(dp_action, is_buy=True, optpolicy=optpolicy))
+#simulate(dp_action, is_buy=True, optpolicy=optpolicy)
 
 
 # def reward2(midpoint,cur_cost):
