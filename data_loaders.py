@@ -5,7 +5,6 @@ import os
 import glob
 
 SAMPLE_PATH = 'data/order_books/2012/IF1201.csv'
-#'data/order_books/2011/IF1101.csv'
 
 def read(path, is_buy=True, is_dp=True, no_obs=None, slice_size=50):
     df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
@@ -32,9 +31,10 @@ def generate_data(function, *args, **kwargs):
     
     # Find all csv files in data/order_books
     os.chdir( 'data/order_books/' )
-    PATHS = ['data/order_books/' +  x
-              for x in glob.glob( '*/**.csv' )]  
-    #print(f"PATHS: {sorted(PATHS)}")
+    # PATHS = ['data/order_books/' +  x
+    #           for x in glob.glob( '*/**.csv' )]
+    PATHS = [SAMPLE_PATH]
+    print(f"PATHS: {sorted(PATHS)}")
     os.chdir( '../..' )
     for t in sorted(PATHS):
         yield function(t, *args, **kwargs)

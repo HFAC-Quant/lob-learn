@@ -24,9 +24,9 @@ is_buy = True
 is_dp = True
 actions = []
 
-# TODO June 20: Keep updating same DP table with different datasets until the DP table converges
-# TODO June 20: Compare DP against q-learning against set and leave
-# TODO June 20: Use Keras/diff model
+# TODO June 28: Rewrite q-learning to match DP
+# TODO June 28: Compare DP against q-learning against set and leave
+# TODO June 28: Use Keras/diff model
 
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
@@ -76,12 +76,37 @@ def simulate(algo, is_buy, qvals=None, optpolicy=None):
 	rewards = 0
 	volume_left = total_volume
 	data_gen = get_data(is_buy, time_horizon)
+	prices, volumes, midpoint = next(data_gen)  # get market data from the current time
+	theoretical_price = midpoint.iloc[0]
+	for num_time in range(num_times):
+		time_left = (num_times - num_time) * time_horizon / num_times
+		action = algo(prices, volumes, midpoint, time_left, volume_left, qvals, optpolicy, num_time)
+		action_price = prices.iloc[int(num_time * time_horizon / num_times), action]
+		cur_reward = 0
+
+		for t in range(int(time_horizon / num_times)):
+			cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t],
+										  volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price,
+										  volume_left)
+			print(cur_rew)
+			print(volume_left)
+			cur_reward += cur_rew
+
+		rewards += cur_reward
+	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
+	return rewards, volume_left
+
+def qsimulate(algo, is_buy, qvals=None, optpolicy=None):
+	rewards = 0
+	volume_left = total_volume
+	data_gen = get_data(is_buy, time_horizon)
 	for time_left in range(time_horizon-1, -1, -1):
 		prices, volumes, midpoint = next(data_gen) # get market data from the current time
 		ix = time_horizon - time_left - 1
 		action = algo(prices, volumes, midpoint, time_left, volume_left, qvals, optpolicy, max(math.ceil(ix/time_horizon * num_times) - 1, 0))
 		cur_reward, volume_left = reward(action, prices.iloc[ix], volumes.iloc[ix], midpoint.iloc[ix], volume_left)
 		rewards += cur_reward
+	print(f"simulation reward: {rewards}, volume_left: {volume_left}")
 	return rewards, volume_left
 
 def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_buy is true; fix action vs action price in qlearning
@@ -91,7 +116,7 @@ def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_bu
 	cur_reward = 0
 	if is_buy:
 		newprices, newvolumes = prices.iloc[6:11], volumes.iloc[5:10]
-		for i in range(5): 
+		for i in range(5):
 			if action_price >= newprices.iloc[i]: #trade
 				cur_reward -= (newprices.iloc[i] - midpoint)*min(newvolumes.iloc[i], volume_left) #assumes is_buy is true
 				volume_left -= min(newvolumes.iloc[i], volume_left)
@@ -99,7 +124,7 @@ def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_bu
 					break
 	else:
 		newprices, newvolumes = prices.iloc[4:-1:-1], volumes.iloc[4:-1:-1]
-		for i in range(5): 
+		for i in range(5):
 			if action_price <= newprices.iloc[i]:
 				cur_reward -= (midpoint - newprices.iloc[i])*min(newvolumes.iloc[i], volume_left)
 				volume_left -= min(newvolumes.iloc[i], volume_left)
@@ -107,7 +132,7 @@ def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_bu
 					break
 	return cur_reward/midpoint, volume_left
 
-def dp(is_buy, learningrate):
+def dp(is_buy, learningrate, num_iter=1):
 	data_gen = get_data(is_buy, time_horizon)
 	dptable = np.zeros((num_times + 1,num_volumes,num_actions)) #num_times + 1 for the penalty if you run out of time and there's still vol and OOB
 	volume_left = total_volume
@@ -116,53 +141,55 @@ def dp(is_buy, learningrate):
 	for volume_bucket in range(1,num_volumes): # what if vol_left is > 0 but in the first vol bucket?
 		for action in range(num_actions):
 			dptable[num_times][volume_bucket][action] = -2000 * volume_bucket #potentially more precise if this is reward of trading volume_left at worst prices at time_horizon
-	prices, volumes, midpoint = next(data_gen)
 	#print(prices.iloc[0:5], volumes.iloc[0:5], midpoint[0:5])
 
-	for num_time in range(num_times - 1,-1,-1): #num_time is time that has elapsed (in buckets)
-		for volume_bucket in range(num_volumes):
-			for action in range(num_actions):
+	for i in range(num_iter):
+		prices, volumes, midpoint = next(data_gen)
+		theoretical_price = midpoint.iloc[0]
+		for num_time in range(num_times - 1,-1,-1): #num_time is time that has elapsed (in buckets)
+			for volume_bucket in range(num_volumes):
+				for action in range(num_actions):
 
-				# if num_time == 1 and volume_bucket == 0:
-				# 	print("HERE")
+					# if num_time == 1 and volume_bucket == 0:
+					# 	print("HERE")
 
-				state = (num_time, volume_bucket)
+					state = (num_time, volume_bucket)
 
-				cur_reward = 0
-				theoretical_price = midpoint.iloc[0]
-				volume_left = (volume_bucket + 1) * total_volume / num_volumes #top of volume bucket
+					cur_reward = 0
+					volume_left = (volume_bucket + 1) * total_volume / num_volumes #top of volume bucket
 
-				# if num_time == 1 and volume_bucket == 0:
-				# 	print(f"Volume_left = {volume_left}")
+					# if num_time == 1 and volume_bucket == 0:
+					# 	print(f"Volume_left = {volume_left}")
 
-				action_price = prices.iloc[int(num_time * time_horizon / num_times), action]
+					action_price = prices.iloc[int(num_time * time_horizon / num_times), action]
 
-				for t in range(int(time_horizon/num_times)):
-					cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t], volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price, volume_left)
-					cur_reward += cur_rew
-					#print(f"action_price = {action_price}")
-				new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
+					for t in range(int(time_horizon/num_times)):
+						cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t], volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price, volume_left)
+						cur_reward += cur_rew
+						#print(f"action_price = {action_price}")
+					new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 
-				# if num_time == num_times - 1:
-				# 	print(f"volume left = {volume_left}")
+					# if num_time == num_times - 1:
+					# 	print(f"volume left = {volume_left}")
 
-				# if num_time == 1 and volume_bucket == 0:
-			 	# 	print(f"new_vol_bucket = {new_vol_bucket}")
+					# if num_time == 1 and volume_bucket == 0:
+					# 	print(f"new_vol_bucket = {new_vol_bucket}")
 
-				best_reward = np.amax(dptable[num_time + 1][new_vol_bucket])
+					best_reward = np.amax(dptable[num_time + 1][new_vol_bucket])
 
-				# if num_time == 1 and volume_bucket == 0:
-				# 	print(f"best_reward = {best_reward}")
+					# if num_time == 1 and volume_bucket == 0:
+					# 	print(f"best_reward = {best_reward}")
 
-				ntable[num_time][volume_bucket][action] += 1
-				n = float(ntable[num_time][volume_bucket][action])
+					ntable[num_time][volume_bucket][action] += 1
+					n = float(ntable[num_time][volume_bucket][action])
 
-				dptable[num_time][volume_bucket][action] = n/(n+1) * dptable[num_time][volume_bucket][action] + 1/(n+1) * (cur_reward + best_reward)
+					dptable[num_time][volume_bucket][action] = n/(n+1) * dptable[num_time][volume_bucket][action] + 1/(n+1) * (cur_reward + best_reward)
 
-				# if num_time == 1 and volume_bucket == 0:
-				# 	print(f"Updated to {dptable[num_time][volume_bucket][action]}")
+					# if num_time == 1 and volume_bucket == 0:
+					# 	print(f"Updated to {dptable[num_time][volume_bucket][action]}")
 
-			print("dptable:", dptable)
+				print(f"run {i} dptable:", dptable)
+
 	optpolicy = -np.ones((num_times,num_volumes),dtype=int)
 	for t in range(num_times):
 		for v in range(num_volumes):
@@ -174,11 +201,6 @@ def dp(is_buy, learningrate):
 def dp_action(prices, volumes, midpoint, time_left, volume_left, qvals, optpolicy, num_time):
 	volume_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 	return optpolicy[num_time][volume_bucket]
-
-
-dptable, optpolicy = dp(is_buy=True, learningrate=0.6)
-print(simulate(dp_action, is_buy=True, optpolicy=optpolicy))
-#simulate(dp_action, is_buy=True, optpolicy=optpolicy)
 
 
 # def reward2(midpoint,cur_cost):
@@ -223,7 +245,7 @@ def execute(action, prices, volumes, midpoint, time_left, volume_left):
 	return r, (t, v), time_left, volume_left
 
 
-def qlearning_test(prices, volumes, midpoint, time_left, volume_left, qvals):
+def qlearning_test(prices, volumes, midpoint, time_left, volume_left, qvals, optpolicy, num_time):
 	t = max(math.ceil(time_left / time_horizon * num_times) - 1, 0)
 	v = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 	return np.argmax(qvals[t][v])
@@ -289,6 +311,9 @@ def training(discountrate, learningrate):
 
 #training(discountrate=0.1, learningrate=0.6)
 
-# qvals = np.load("qvals.npy")
-# print(simulate(qlearning_test, is_buy, qvals))
+# dptable, optpolicy = dp(is_buy=True, learningrate=0.6)
+# simulate(dp_action, is_buy=True, optpolicy=optpolicy)
+
+qvals = np.load("qvals.npy")
+print(qsimulate(qlearning_test, is_buy, qvals))
 
