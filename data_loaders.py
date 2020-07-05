@@ -4,7 +4,7 @@ from sklearn.preprocessing import QuantileTransformer
 import os
 import glob
 
-SAMPLE_PATH = 'data/order_books/2012/IF1201.csv'
+SAMPLE_PATH = 'data/order_books/2014/IF1401.csv'
 
 def read(path, is_buy=True, is_dp=True, no_obs=None, slice_size=50):
     df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
