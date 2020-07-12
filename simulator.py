@@ -23,8 +23,11 @@ time_horizon = 50 #1000
 is_buy = True
 is_dp = True
 actions = []
+Q_EPSILON = 0.000001    # defines convergence epsilon for qvals and DP
+DP_EPSILON = 0.003
 
-# TODO July 5: run DP and q-learning until they converge, then compare them
+# TODO July 12: Write tool to jump into high-volume part of data
+# TODO July 12: Investigate why the 2013/IF1307 set-and-leave performs better than both DP and q-learning
 # TODO June 28: Compare DP against q-learning against set and leave
 # TODO June 28: Use Keras/diff model
 
@@ -96,6 +99,36 @@ def simulate(is_buy, optpolicy=None):
 	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
 	return rewards, volume_left
 
+
+def simulate_set_and_leave(is_buy, critical_time_left=int(0.2*time_horizon), price=None):
+	data_gen = get_data(is_buy, time_horizon)
+	prices, volumes, midpoint = next(data_gen)
+	theoretical_price = midpoint.iloc[0]
+	rewards = 0
+
+	if price is None:
+		price = theoretical_price
+
+	volume_left = total_volume
+
+	for t in range(time_horizon - critical_time_left):
+
+		cur_rew, volume_left = reward(price.iloc[0], prices.iloc[t], volumes.iloc[t], theoretical_price, volume_left)
+		rewards += cur_rew
+
+	for t in range(critical_time_left):
+		if volume_left <= 0:
+			break
+
+		cur_rew, volume_left = reward((prices.iloc[t, 10] if is_buy else prices.iloc[t, 0]), prices.iloc[time_horizon - critical_time_left],
+									  volumes.iloc[time_horizon - critical_time_left], theoretical_price, volume_left)
+
+		rewards += cur_rew
+
+	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
+	return rewards, volume_left
+
+
 # def qsimulate(algo, is_buy, qvals=None, optpolicy=None):
 # 	rewards = 0
 # 	volume_left = total_volume
@@ -132,7 +165,7 @@ def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_bu
 					break
 	return cur_reward/midpoint, volume_left
 
-def dp(is_buy, learningrate, num_iter=1):
+def dp(is_buy, num_iter=1):
 	data_gen = get_data(is_buy, time_horizon)
 	dptable = np.zeros((num_times + 1,num_volumes,num_actions)) #num_times + 1 for the penalty if you run out of time and there's still vol and OOB
 	volume_left = total_volume
@@ -143,6 +176,8 @@ def dp(is_buy, learningrate, num_iter=1):
 			dptable[num_times][volume_bucket][action] = -2000 * volume_bucket #potentially more precise if this is reward of trading volume_left at worst prices at time_horizon
 	#print(prices.iloc[0:5], volumes.iloc[0:5], midpoint[0:5])
 
+
+	dptable_last = dptable.copy()
 	for i in range(num_iter):
 		prices, volumes, midpoint = next(data_gen)
 		theoretical_price = midpoint.iloc[0]
@@ -188,7 +223,16 @@ def dp(is_buy, learningrate, num_iter=1):
 					# if num_time == 1 and volume_bucket == 0:
 					# 	print(f"Updated to {dptable[num_time][volume_bucket][action]}")
 
-				print(f"run {i} dptable:", dptable)
+				# print(f"run {i} dptable:", dptable)
+
+		print(f"Training run {i}")
+		print(f"Relative norm: {np.linalg.norm(dptable - dptable_last)/np.linalg.norm(dptable)}")
+
+		if np.linalg.norm(dptable - dptable_last)/np.linalg.norm(dptable) < DP_EPSILON and i > 0.1 * num_iter:
+			print(f"Breaking at iteration {i}")
+			break
+
+		dptable_last = dptable.copy()
 
 	# optpolicy = -np.ones((num_times,num_volumes),dtype=int)
 	# for t in range(num_times):
@@ -310,51 +354,71 @@ def to_optpolicy(valuetable):
 	optpolicy = np.argmax(valuetable[:-1], axis=2)
 	return optpolicy
 
-def training(discountrate, learningrate):
+def training(discountrate, learningrate, num_iter=1000):
 	qvals = np.zeros(shape=(num_times + 1, num_volumes, num_actions))
 	for volume_bucket in range(1,num_volumes): # what if vol_left is > 0 but in the first vol bucket?
 		for action in range(num_actions):
 			qvals[num_times][volume_bucket][action] = -2000 * volume_bucket 
-	num_runs = 1000
+
 	data_gen = get_data(is_buy, time_horizon)
-	for i in range(num_runs): # train on contiguous blocks of data
+
+	qvals_last = qvals.copy()
+	for i in range(num_iter): # train on contiguous blocks of data
 		#global actions
 		
-		print(f"Training run {i}")
 		prices, volumes, midpoint = next(data_gen) # get market data from the current time
 		qvals = qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals)
-		#print(qvals)
+
+		print(f"Training run {i}")
+		print(f"Relative norm: {np.linalg.norm(qvals - qvals_last)/np.linalg.norm(qvals)}")
+
+		if np.linalg.norm(qvals - qvals_last)/np.linalg.norm(qvals) < Q_EPSILON and i > 0.1 * num_iter:
+			print(f"Breaking at iteration {i}")
+			break
+
+		qvals_last = qvals.copy()
 	
 	#global actions
 
 	actions_np = np.asarray(actions)
-	n, bins, patches = plt.hist(actions_np, facecolor='blue', alpha=0.5)
-	plt.show()
+	# n, bins, patches = plt.hist(actions_np, facecolor='blue', alpha=0.5)
+	# plt.show()
 	np.save("qvals", qvals)
 	#print("actions:",actions)
 	return qvals
 
-training(discountrate=0.1, learningrate=0.6)
-# print(qvals)
-# print(qvals_to_optpolicy(qvals))
-
+training(discountrate=0.1, learningrate=0.6, num_iter=500)
+# # print(qvals)
+# # print(qvals_to_optpolicy(qvals))
+#
 qvals = np.load("qvals.npy")
-print("qvals:")
+# # print("qvals:")
 simulate(is_buy=True, optpolicy=to_optpolicy(qvals))
 #simulation reward: 1.0872285918271558, volume_left: 0 (data 1201)
 #simulation reward: 0.17933092898893416, volume_left: 1842 (with qvals from training on 1201; data 1102)
 #simulation reward: 1.6027771843623007, volume_left: 323 (trained on 1201; 1401)
 #simulation reward: 1.0793420209356894, volume_left: 288 (trained on 1401; 1401)
+#simulation reward: 2.0309335612048565, volume_left: 0 (trained on 1401 with 247 iter; 1401 simulate)
+#simulation reward: 0.0024436600597323955, volume_left: 1953 (trained on 1307 with 442 iter; 1307 simulate)
 
 
-dptable = dp(is_buy=True, learningrate=0.6)
-#dptable = np.load("dptable.npy")
-print("dptable:")
+dp(is_buy=True, num_iter=50)
+dptable = np.load("dptable.npy")
+# # print("dptable:")
 simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
 #simulation reward: 1.0007139557346063, volume_left: 0 (data 1201)
 #simulation reward: 0.15327695560254007, volume_left: 1842 (with dptable from training on 1201; data 1102)
 #simulation reward: 2.302414014099577, volume_left: 0 (trained on 1201; 1401)
 #simulation reward: 2.266438795129272, volume_left: 0 (trained on 1401; 1401)
+#simulation reward: 1.2599871822260045, volume_left: 0 (trained on 1401 with 100 iter; 1401 simulate)
+#simulation reward: 2.266438795129272, volume_left: 0 (trained on 1401 with 3 iter; 1401 simulate)
+#simulation reward: 0.037391877739417365, volume_left: 1922 (trained on 1307 with 79 iter; 1307 simulate)
+
+
+
+simulate_set_and_leave(is_buy=True)
+#simulation reward: 1.4502029480880052, volume_left: 0 (1401 simulate)
+#simulation reward: 0.07082735347735696, volume_left: 1774 (1307 simulate)
 
 
 # print(qsimulate(qlearning_test, is_buy, qvals))
