@@ -4,7 +4,7 @@ from sklearn.preprocessing import QuantileTransformer
 import os
 import glob
 
-SAMPLE_PATH = 'data/order_books/2014/IF1401.csv'
+
 
 def read(path, is_buy=True, is_dp=True, no_obs=None, slice_size=50):
     df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
@@ -26,14 +26,14 @@ def read_bid_ask(path, no_obs=None):
     df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
     return df['B1'], df['S1']
 
-def generate_data(function, *args, **kwargs):
+def generate_data(path, function, *args, **kwargs):
     '''Yields data one at a time'''
     
     # Find all csv files in data/order_books
     os.chdir( 'data/order_books/' )
     # PATHS = ['data/order_books/' +  x
     #           for x in glob.glob( '*/**.csv' )]
-    PATHS = [SAMPLE_PATH]
+    PATHS = [path]
     print(f"PATHS: {sorted(PATHS)}")
     os.chdir( '../..' )
     for t in sorted(PATHS):
