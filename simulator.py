@@ -66,8 +66,8 @@ DP_EPSILON = 0.003
 # [ 0  0  0  0  0]  
 # [ 0  0  0  0  0]]
 
-def get_data(is_buy, time_horizon):
-	for file in generate_data(read, is_buy, is_dp=True, slice_size=time_horizon):
+def get_data(path, is_buy, time_horizon):
+	for file in generate_data(path, read, is_buy, is_dp=True, slice_size=time_horizon):
 		if is_dp:
 			for slice in file:
 				yield slice.iloc[:, 0:11], slice.iloc[:, 11:21], slice.iloc[:, 21:22] #prices,volumes,midpoint
@@ -75,10 +75,10 @@ def get_data(is_buy, time_horizon):
 			for slice in file:
 				yield (slice.iloc[:, 0:5], slice.iloc[:, 5:10], slice.iloc[:, 10:11])
 
-def simulate(is_buy, optpolicy=None):
+def simulate(path, is_buy, optpolicy=None):
 	rewards = 0
 	volume_left = total_volume
-	data_gen = get_data(is_buy, time_horizon)
+	data_gen = get_data(path, is_buy, time_horizon)
 	prices, volumes, midpoint = next(data_gen)  # get market data from the current time
 	theoretical_price = midpoint.iloc[0]
 
@@ -100,8 +100,8 @@ def simulate(is_buy, optpolicy=None):
 	return rewards, volume_left
 
 
-def simulate_set_and_leave(is_buy, critical_time_left=int(0.2*time_horizon), price=None):
-	data_gen = get_data(is_buy, time_horizon)
+def simulate_set_and_leave(path, is_buy, critical_time_left=int(0.2*time_horizon), price=None):
+	data_gen = get_data(path, is_buy, time_horizon)
 	prices, volumes, midpoint = next(data_gen)
 	theoretical_price = midpoint.iloc[0]
 	rewards = 0
@@ -165,8 +165,8 @@ def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_bu
 					break
 	return cur_reward/midpoint, volume_left
 
-def dp(is_buy, num_iter=1):
-	data_gen = get_data(is_buy, time_horizon)
+def dp(path, is_buy, num_iter=1):
+	data_gen = get_data(path, is_buy, time_horizon)
 	dptable = np.zeros((num_times + 1,num_volumes,num_actions)) #num_times + 1 for the penalty if you run out of time and there's still vol and OOB
 	volume_left = total_volume
 	time_left = time_horizon
@@ -354,13 +354,13 @@ def to_optpolicy(valuetable):
 	optpolicy = np.argmax(valuetable[:-1], axis=2)
 	return optpolicy
 
-def training(discountrate, learningrate, num_iter=1000):
+def training(path, discountrate, learningrate, num_iter=1000):
 	qvals = np.zeros(shape=(num_times + 1, num_volumes, num_actions))
 	for volume_bucket in range(1,num_volumes): # what if vol_left is > 0 but in the first vol bucket?
 		for action in range(num_actions):
 			qvals[num_times][volume_bucket][action] = -2000 * volume_bucket 
 
-	data_gen = get_data(is_buy, time_horizon)
+	data_gen = get_data(path, is_buy, time_horizon)
 
 	qvals_last = qvals.copy()
 	for i in range(num_iter): # train on contiguous blocks of data
@@ -387,13 +387,55 @@ def training(discountrate, learningrate, num_iter=1000):
 	#print("actions:",actions)
 	return qvals
 
-training(discountrate=0.1, learningrate=0.6, num_iter=500)
+
+
+def train_simulate():
+	SAMPLE_PATH_LST = ['data/order_books/2011/IF1101.csv','data/order_books/2012/IF1201.csv']
+	#'data/order_books/2013/IF1301.csv','data/order_books/2014/IF1401.csv']
+
+	# rewards = {path:[] for path in SAMPLE_PATH_LST}
+	# volume_left = {path:[] for path in SAMPLE_PATH_LST}
+
+	# df = pd.DataFrame(columns=['Training Path','Simulation Path','Q-Value Rewards','Q-Value Volume Left',
+	# 	'DP Rewards','DP Volume Left','Set and Leave Rewards','Set and Leave Volume Left'])
+
+	dflist = []
+	for counter,trainpath in enumerate(SAMPLE_PATH_LST):
+		training(trainpath, discountrate=0.1, learningrate=0.6, num_iter=180)
+		qvals = np.load("qvals.npy")
+		dp(trainpath, is_buy=True, num_iter=5)
+		dptable = np.load("dptable.npy")
+		for simulpath in SAMPLE_PATH_LST:
+			qrewards, qvolume_left = simulate(simulpath, is_buy=True, optpolicy=to_optpolicy(qvals))
+			dprewards, dpvolume_left = simulate(simulpath, is_buy=True, optpolicy=to_optpolicy(dptable))
+			slrewards, slvolume_left = simulate_set_and_leave(simulpath, is_buy=True)
+			dftemp = pd.DataFrame({'Training Path':trainpath, 'Simulation Path':simulpath,
+				'Q-Value Rewards':qrewards,'Q-Value Volume Left':qvolume_left,
+				'DP Rewards':dprewards,'DP Volume Left':dpvolume_left,'Set and Leave Rewards':slrewards,
+				'Set and Leave Volume Left':slvolume_left})
+			dflist.append(dftemp)
+		df = pd.concat(dflist).sort_values(['Training Path','Simulation Path'],ascending=True)
+		strings = ['trainpath1101','trainpath1201','trainpath1301','trainpath1401']
+		df.to_csv('trainsimulate0726_' + strings[counter] + '.csv')
+	return df
+
+
+df = train_simulate()
+#df.to_csv('trainsimulate0726_total.csv')
+
+
+#training(discountrate=0.1, learningrate=0.6, num_iter=500)
+
 # # print(qvals)
 # # print(qvals_to_optpolicy(qvals))
 #
-qvals = np.load("qvals.npy")
+
+#qvals = np.load("qvals.npy")
+
 # # print("qvals:")
-simulate(is_buy=True, optpolicy=to_optpolicy(qvals))
+
+#simulate(is_buy=True, optpolicy=to_optpolicy(qvals))
+
 #simulation reward: 1.0872285918271558, volume_left: 0 (data 1201)
 #simulation reward: 0.17933092898893416, volume_left: 1842 (with qvals from training on 1201; data 1102)
 #simulation reward: 1.6027771843623007, volume_left: 323 (trained on 1201; 1401)
@@ -402,10 +444,13 @@ simulate(is_buy=True, optpolicy=to_optpolicy(qvals))
 #simulation reward: 0.0024436600597323955, volume_left: 1953 (trained on 1307 with 442 iter; 1307 simulate)
 
 
-dp(is_buy=True, num_iter=50)
-dptable = np.load("dptable.npy")
+#dp(is_buy=True, num_iter=50)
+#dptable = np.load("dptable.npy")
+
 # # print("dptable:")
-simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
+
+#simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
+
 #simulation reward: 1.0007139557346063, volume_left: 0 (data 1201)
 #simulation reward: 0.15327695560254007, volume_left: 1842 (with dptable from training on 1201; data 1102)
 #simulation reward: 2.302414014099577, volume_left: 0 (trained on 1201; 1401)
@@ -416,7 +461,8 @@ simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
 
 
 
-simulate_set_and_leave(is_buy=True)
+#simulate_set_and_leave(is_buy=True)
+
 #simulation reward: 1.4502029480880052, volume_left: 0 (1401 simulate)
 #simulation reward: 0.07082735347735696, volume_left: 1774 (1307 simulate)
 
