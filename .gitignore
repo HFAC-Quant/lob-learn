@@ -1,6 +1,7 @@
 __pycache__
 .ipynb_checkpoints/
 data/order_books/
+data/
 data/.DS_Store
 .DS_Store
 .idea/
