@@ -1,0 +1,17 @@
+,Training Path,Simulation Path,Q-Value Rewards,Q-Value Volume Left,DP Rewards,DP Volume Left,Set and Leave Rewards,Set and Leave Volume Left,,Highest Reward,Reward Type of Highest Reward
+price,data/order_books/2011/IF1101.csv,data/order_books/2011/IF1101.csv,-0.667580945,679,-0.974084933,347,-0.135754595,1546,,-0.135754595,SET AND LEAVE
+price,data/order_books/2011/IF1101.csv,data/order_books/2012/IF1201.csv,1.008609466,0,0.224014111,70,0.653815463,0,,1.008609466,Q-LEARNING
+price,data/order_books/2011/IF1101.csv,data/order_books/2013/IF1301.csv,2.417556716,118,1.486629765,0,1.658065019,0,,2.417556716,Q-LEARNING
+price,data/order_books/2011/IF1101.csv,data/order_books/2014/IF1401.csv,1.691348003,0,1.253834651,0,1.450202948,0,,1.691348003,Q-LEARNING
+price,data/order_books/2012/IF1201.csv,data/order_books/2011/IF1101.csv,-0.639427472,716,-0.974084933,347,-0.135754595,1546,,-0.135754595,SET AND LEAVE
+price,data/order_books/2012/IF1201.csv,data/order_books/2012/IF1201.csv,1.663684852,0,0.286758221,0,0.653815463,0,,1.663684852,Q-LEARNING
+price,data/order_books/2012/IF1201.csv,data/order_books/2013/IF1301.csv,2.250721135,0,1.486629765,0,1.658065019,0,,2.250721135,Q-LEARNING
+price,data/order_books/2012/IF1201.csv,data/order_books/2014/IF1401.csv,1.619824824,0,1.253834651,0,1.450202948,0,,1.619824824,Q-LEARNING
+price,data/order_books/2013/IF1301.csv,data/order_books/2011/IF1101.csv,-0.313755163,1086,-0.746240424,556,-0.135754595,1546,,-0.135754595,SET AND LEAVE
+price,data/order_books/2013/IF1301.csv,data/order_books/2012/IF1201.csv,1.805468061,0,0.990550586,0,0.653815463,0,,1.805468061,Q-LEARNING
+price,data/order_books/2013/IF1301.csv,data/order_books/2013/IF1301.csv,1.663366337,0,1.558821236,0,1.658065019,0,,1.663366337,Q-LEARNING
+price,data/order_books/2013/IF1301.csv,data/order_books/2014/IF1401.csv,1.408587909,0,1.348429823,0,1.450202948,0,,1.450202948,SET AND LEAVE
+price,data/order_books/2014/IF1401.csv,data/order_books/2011/IF1101.csv,-0.348245531,1528,-0.974084933,347,-0.135754595,1546,,-0.135754595,SET AND LEAVE
+price,data/order_books/2014/IF1401.csv,data/order_books/2012/IF1201.csv,0.912015455,360,0.474150603,0,0.653815463,0,,0.912015455,Q-LEARNING
+price,data/order_books/2014/IF1401.csv,data/order_books/2013/IF1301.csv,2.404537304,0,1.486629765,0,1.658065019,0,,2.404537304,Q-LEARNING
+price,data/order_books/2014/IF1401.csv,data/order_books/2014/IF1401.csv,2.042298654,0,1.253834651,0,1.450202948,0,,2.042298654,Q-LEARNING
