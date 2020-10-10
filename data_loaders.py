@@ -6,8 +6,15 @@ import glob
 
 
 
-def read(path, is_buy=True, is_dp=True, no_obs=None, slice_size=50):
-    df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
+def read(path, is_buy=True, is_dp=True, no_obs=None, slice_size=50, time_horizon=50):
+    #path.seek(0, os.SEEK_END)
+    #print(path)
+    #totallen = open(path, 'r').tell()
+    totallen = len(pd.read_csv(path).iloc[:, 1:].head(no_obs))
+    df = pd.read_csv(path, skiprows=range(1, totallen - slice_size*time_horizon)).iloc[:, 1:].head(no_obs)
+    #print(len(df))
+    #print(df.head())
+    #df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
     price = (df['S1'] + df['B1']) / 2
     df['price'] = price
     num_slices = int(no_obs / slice_size) if no_obs else int(df.shape[0] / slice_size)
@@ -26,15 +33,18 @@ def read_bid_ask(path, no_obs=None):
     df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
     return df['B1'], df['S1']
 
-def generate_data(path, function, *args, **kwargs):
+def generate_data(function, *args, **kwargs):
     '''Yields data one at a time'''
     
     # Find all csv files in data/order_books
-    os.chdir( 'data/order_books/' )
-    # PATHS = ['data/order_books/' +  x
-    #           for x in glob.glob( '*/**.csv' )]
-    PATHS = [path]
+    os.chdir( 'data/order_books_raw/' )
+    PATHS = ['data/order_books_raw/' +  x
+               for x in glob.glob( '*/**.csv' )]
+    #PATHS = [path]
     print(f"PATHS: {sorted(PATHS)}")
     os.chdir( '../..' )
     for t in sorted(PATHS):
         yield function(t, *args, **kwargs)
+
+
+read('data/order_books_raw/2010/IF1005.csv')

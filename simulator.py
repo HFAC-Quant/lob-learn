@@ -66,8 +66,8 @@ DP_EPSILON = 0.003
 # [ 0  0  0  0  0]  
 # [ 0  0  0  0  0]]
 
-def get_data(path, is_buy, time_horizon):
-	for file in generate_data(path, read, is_buy, is_dp=True, slice_size=time_horizon):
+def get_data(is_buy, time_horizon, path=None):
+	for file in generate_data(read, is_buy, is_dp=True, slice_size=time_horizon):
 		if is_dp:
 			for slice in file:
 				yield slice.iloc[:, 0:11], slice.iloc[:, 11:21], slice.iloc[:, 21:22] #prices,volumes,midpoint
@@ -75,7 +75,7 @@ def get_data(path, is_buy, time_horizon):
 			for slice in file:
 				yield (slice.iloc[:, 0:5], slice.iloc[:, 5:10], slice.iloc[:, 10:11])
 
-def simulate(path, is_buy, optpolicy=None):
+def simulate(is_buy, path=None, optpolicy=None):
 	rewards = 0
 	volume_left = total_volume
 	data_gen = get_data(path, is_buy, time_horizon)
@@ -94,6 +94,7 @@ def simulate(path, is_buy, optpolicy=None):
 										  volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price,
 										  volume_left)
 			cur_reward += cur_rew
+			print(cur_reward)
 
 		rewards += cur_reward
 	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
@@ -420,7 +421,7 @@ def train_simulate():
 	return df
 
 
-df = train_simulate()
+#df = train_simulate()
 #df.to_csv('trainsimulate0726_total.csv')
 
 
@@ -445,11 +446,11 @@ df = train_simulate()
 
 
 #dp(is_buy=True, num_iter=50)
-#dptable = np.load("dptable.npy")
+dptable = np.load("dptable.npy")
 
 # # print("dptable:")
 
-#simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
+simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
 
 #simulation reward: 1.0007139557346063, volume_left: 0 (data 1201)
 #simulation reward: 0.15327695560254007, volume_left: 1842 (with dptable from training on 1201; data 1102)
