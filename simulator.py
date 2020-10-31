@@ -14,6 +14,7 @@ import random
 import math
 import matplotlib.pyplot as plt
 from data_loaders import *
+from tensorflow import keras
 
 num_actions = 11 #5
 num_times = 5
@@ -26,9 +27,6 @@ actions = []
 Q_EPSILON = 0.000001    # defines convergence epsilon for qvals and DP
 DP_EPSILON = 0.003
 
-# TODO July 12: Write tool to jump into high-volume part of data
-# TODO July 12: Investigate why the 2013/IF1307 set-and-leave performs better than both DP and q-learning
-# TODO June 28: Compare DP against q-learning against set and leave
 # TODO June 28: Use Keras/diff model
 
 # period = 30 #30 seconds
@@ -419,6 +417,57 @@ def train_simulate():
 		strings = ['trainpath1101','trainpath1201','trainpath1301','trainpath1401']
 		df.to_csv('trainsimulate0726_' + strings[counter] + '.csv')
 	return df
+
+
+
+def to_state(time_bucket, volume_bucket):
+	# For keras learning
+	return num_times * volume_bucket + time_bucket
+
+
+def to_buckets(state):
+	# For keras learning
+	volume_bucket = int(state / num_times)
+	time_bucket = state % num_times
+	return (time_bucket, volume_bucket)
+
+
+def keras_learning(num_episodes):
+	dim = num_times * num_volumes
+	model = keras.Sequential()
+	model.add(keras.InputLayer(batch_input_shape=(1,dim)))
+	model.add(keras.Dense(25, activation='sigmoid'))
+	model.add(keras.Dense(num_actions, activation='linear'))
+	model.compile(loss='mse', optimizer='adam', metrics=['mae'])
+
+	gamma = 0.95
+	eps = 0.5
+	decay_factor = 0.999
+	r_avg_list = []
+	for i in range(num_episodes):
+		s = to_state(0, num_volumes - 1)  # start at time bucket 0 and highest volume bucket
+		eps *= decay_factor
+		if i % 100 == 0:
+			print("Episode {} of {}".format(i + 1, num_episodes))
+		done = False
+		r_sum = 0
+		while not done:
+			if np.random.random() < eps:
+				a = np.random.randint(0, num_actions)
+			else:
+				a = np.argmax(model.predict(np.identity(dim)[s:s + 1]))
+
+			#### STOPPED HERE ####
+				
+			new_s, r, done, _ = env.step(a)     # use our reward function / our way of moving to next state
+			target = r + y * np.max(model.predict(np.identity(5)[new_s:new_s + 1]))
+			target_vec = model.predict(np.identity(5)[s:s + 1])[0]
+			target_vec[a] = target
+			model.fit(np.identity(5)[s:s + 1], target_vec.reshape(-1, 2), epochs=1, verbose=0)
+			s = new_s
+			r_sum += r
+		r_avg_list.append(r_sum / 1000)
+
 
 
 #df = train_simulate()
