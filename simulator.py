@@ -28,6 +28,7 @@ Q_EPSILON = 0.000001    # defines convergence epsilon for qvals and DP
 DP_EPSILON = 0.003
 
 # TODO June 28: Use Keras/diff model
+# TODO Nov 7: Add num_slices argument to each generate_data call
 
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
@@ -64,8 +65,8 @@ DP_EPSILON = 0.003
 # [ 0  0  0  0  0]  
 # [ 0  0  0  0  0]]
 
-def get_data(is_buy, time_horizon, path=None):
-	for file in generate_data(read, is_buy, is_dp=True, slice_size=time_horizon):
+def get_data(is_buy, time_horizon, num_slices, path=None):
+	for file in generate_data(read, path, is_buy, is_dp=True, slice_size=time_horizon, num_slices=num_slices):
 		if is_dp:
 			for slice in file:
 				yield slice.iloc[:, 0:11], slice.iloc[:, 11:21], slice.iloc[:, 21:22] #prices,volumes,midpoint
@@ -432,43 +433,101 @@ def to_buckets(state):
 	return (time_bucket, volume_bucket)
 
 
-def keras_learning(num_episodes):
+def keras_learning(num_episodes, path, is_buy, time_horizon, gamma=0.95, eps=0.2, decay_factor=0.99):
 	dim = num_times * num_volumes
 	model = keras.Sequential()
-	model.add(keras.InputLayer(batch_input_shape=(1,dim)))
-	model.add(keras.Dense(25, activation='sigmoid'))
-	model.add(keras.Dense(num_actions, activation='linear'))
+	model.add(keras.layers.InputLayer(batch_input_shape=(1,dim)))
+	model.add(keras.layers.Dense(25, activation='sigmoid'))
+	model.add(keras.layers.Dense(num_actions, activation='linear'))
 	model.compile(loss='mse', optimizer='adam', metrics=['mae'])
 
-	gamma = 0.95
-	eps = 0.5
-	decay_factor = 0.999
+	data_gen = get_data(is_buy, time_horizon, num_episodes, path)
+
 	r_avg_list = []
 	for i in range(num_episodes):
+		prices, volumes, midpoint = next(data_gen)
+
 		s = to_state(0, num_volumes - 1)  # start at time bucket 0 and highest volume bucket
 		eps *= decay_factor
 		if i % 100 == 0:
 			print("Episode {} of {}".format(i + 1, num_episodes))
-		done = False
 		r_sum = 0
-		while not done:
+
+		num_time = 0   # this is a bucket
+		volume_left = total_volume
+		theoretical_price = midpoint.iloc[0]
+
+		# Select an action
+		while num_time < num_times and volume_left > 0:
 			if np.random.random() < eps:
 				a = np.random.randint(0, num_actions)
 			else:
 				a = np.argmax(model.predict(np.identity(dim)[s:s + 1]))
 
-			#### STOPPED HERE ####
-				
-			new_s, r, done, _ = env.step(a)     # use our reward function / our way of moving to next state
-			target = r + y * np.max(model.predict(np.identity(5)[new_s:new_s + 1]))
-			target_vec = model.predict(np.identity(5)[s:s + 1])[0]
+			action_price = prices.iloc[int(num_time * time_horizon / num_times), a]
+
+			# calculate reward and new state
+			cur_reward = 0
+			for t in range(int(time_horizon / num_times)):
+				cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t],
+											  volumes.iloc[int(num_time * time_horizon / num_times) + t],
+											  theoretical_price, volume_left)
+				cur_reward += cur_rew
+			r = cur_reward
+			new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
+			num_time += 1
+			s_prime = to_state(num_time, new_vol_bucket)
+
+			print(f"dim = {dim}, s_prime = {s_prime}")
+
+			target = r + gamma * np.max(model.predict(np.identity(dim)[s_prime:s_prime + 1]))
+			target_vec = model.predict(np.identity(dim)[s:s + 1])[0]
 			target_vec[a] = target
-			model.fit(np.identity(5)[s:s + 1], target_vec.reshape(-1, 2), epochs=1, verbose=0)
-			s = new_s
+			model.fit(np.identity(dim)[s:s + 1], target_vec.reshape(-1, num_actions), epochs=1, verbose=0)
+			s = s_prime
 			r_sum += r
+
 		r_avg_list.append(r_sum / 1000)
 
+	model.save('keras_model')
+	# to load:
+	# model = keras.models.load_model('keras_model')
+	# state = to_state(0, num_volumes-1)
+	# model.predict(np.identity(dim)[state:state + 1])
 
+
+def keras_testing(is_buy, path=None, optpolicy=None):
+	dim = num_times * num_volumes
+	model = keras.models.load_model('keras_model')
+
+	rewards = 0
+	volume_left = total_volume
+	data_gen = get_data(is_buy, time_horizon, 1, path)
+	prices, volumes, midpoint = next(data_gen)  # get market data from the current time
+	theoretical_price = midpoint.iloc[0]
+
+	s = to_state(0, num_volumes - 1)  # start at time bucket 0 and highest volume bucket
+
+	for num_time in range(num_times):
+		action = np.argmax(model.predict(np.identity(dim)[s:s + 1]))
+
+		action_price = prices.iloc[int(num_time * time_horizon / num_times), action]
+		cur_reward = 0
+
+		for t in range(int(time_horizon / num_times)):
+			cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t],
+										  volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price,
+										  volume_left)
+			cur_reward += cur_rew
+			print(cur_reward)
+		rewards += cur_reward
+
+		new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
+		num_time += 1
+		s = to_state(num_time, new_vol_bucket)
+
+	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
+	return rewards, volume_left
 
 #df = train_simulate()
 #df.to_csv('trainsimulate0726_total.csv')
@@ -495,11 +554,11 @@ def keras_learning(num_episodes):
 
 
 #dp(is_buy=True, num_iter=50)
-dptable = np.load("dptable.npy")
+# dptable = np.load("dptable.npy")
 
 # # print("dptable:")
 
-simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
+# simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
 
 #simulation reward: 1.0007139557346063, volume_left: 0 (data 1201)
 #simulation reward: 0.15327695560254007, volume_left: 1842 (with dptable from training on 1201; data 1102)
@@ -518,4 +577,9 @@ simulate(is_buy=True, optpolicy=to_optpolicy(dptable))
 
 
 # print(qsimulate(qlearning_test, is_buy, qvals))
+
+
+# Test keras model:
+
+keras_learning(10, "data/order_books/2012/IF1201.csv", True, time_horizon)
 

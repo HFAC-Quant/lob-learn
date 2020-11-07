@@ -32,15 +32,17 @@ def read_bid_ask(path):
     df = pd.read_csv(path).iloc[:, 1:]
     return df['B1'], df['S1']
 
-def generate_data(function, *args, **kwargs):
+def generate_data(function, path=None, *args, **kwargs):
     '''Yields data one at a time'''
-    
-    # Find all csv files in data/order_books
-    os.chdir( 'data/order_books_raw/' )
-    PATHS = ['data/order_books_raw/' +  x
-               for x in glob.glob( '*/**.csv' )]
-    #PATHS = [path]
+
+    if path is None:
+        # find all csv files in data/order_books
+        os.chdir( 'data/order_books/' )
+        PATHS = ['data/order_books/' +  x
+                   for x in glob.glob( '*/**.csv' )]
+    else:
+        PATHS = [path]
     print(f"PATHS: {sorted(PATHS)}")
-    os.chdir( '../..' )
+    # os.chdir( '../..' )
     for t in sorted(PATHS):
         yield function(t, *args, **kwargs)

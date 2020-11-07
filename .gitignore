@@ -5,3 +5,4 @@ data/
 data/.DS_Store
 .DS_Store
 .idea/
+keras_model/
