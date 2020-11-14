@@ -29,6 +29,7 @@ DP_EPSILON = 0.003
 
 # TODO June 28: Use Keras/diff model
 # TODO Nov 7: Add num_slices argument to each generate_data call
+# TODO Nov 14: Finish comparing Keras with Q learning and DP
 
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
@@ -65,8 +66,9 @@ DP_EPSILON = 0.003
 # [ 0  0  0  0  0]  
 # [ 0  0  0  0  0]]
 
-def get_data(is_buy, time_horizon, num_slices, path=None):
-	for file in generate_data(read, path, is_buy, is_dp=True, slice_size=time_horizon, num_slices=num_slices):
+def get_data(is_buy, start_from_beginning, time_horizon, num_slices, path=None):
+	for file in generate_data(read, path, is_buy, is_dp=True, start_from_beginning=start_from_beginning,
+							  slice_size=time_horizon, num_slices=num_slices):
 		if is_dp:
 			for slice in file:
 				yield slice.iloc[:, 0:11], slice.iloc[:, 11:21], slice.iloc[:, 21:22] #prices,volumes,midpoint
@@ -145,6 +147,7 @@ def simulate_set_and_leave(path, is_buy, critical_time_left=int(0.2*time_horizon
 def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_buy is true; fix action vs action price in qlearning
 	'''
 	action is 0-4, where 0 is buy/sell at lowest level, 4 is buy/sell at highest level
+	returns trading costs, i.e. total differences between buy (sell) price and midpoint
 	'''
 	cur_reward = 0
 	if is_buy:
@@ -433,7 +436,7 @@ def to_buckets(state):
 	return (time_bucket, volume_bucket)
 
 
-def keras_learning(num_episodes, path, is_buy, time_horizon, gamma=0.95, eps=0.2, decay_factor=0.99):
+def keras_learning(num_episodes, path, is_buy, start_from_beginning, time_horizon, gamma=0.95, eps=0.2, decay_factor=0.99):
 	dim = num_times * num_volumes
 	model = keras.Sequential()
 	model.add(keras.layers.InputLayer(batch_input_shape=(1,dim)))
@@ -441,16 +444,17 @@ def keras_learning(num_episodes, path, is_buy, time_horizon, gamma=0.95, eps=0.2
 	model.add(keras.layers.Dense(num_actions, activation='linear'))
 	model.compile(loss='mse', optimizer='adam', metrics=['mae'])
 
-	data_gen = get_data(is_buy, time_horizon, num_episodes, path)
+	data_gen = get_data(is_buy, start_from_beginning, time_horizon, num_episodes, path)
 
-	r_avg_list = []
+	r_list = []
+	v_list = []
 	for i in range(num_episodes):
 		prices, volumes, midpoint = next(data_gen)
 
 		s = to_state(0, num_volumes - 1)  # start at time bucket 0 and highest volume bucket
 		eps *= decay_factor
-		if i % 100 == 0:
-			print("Episode {} of {}".format(i + 1, num_episodes))
+		if i % 10 == 0:
+			print("Episode {} of {}".format(i+1, num_episodes))
 		r_sum = 0
 
 		num_time = 0   # this is a bucket
@@ -464,6 +468,8 @@ def keras_learning(num_episodes, path, is_buy, time_horizon, gamma=0.95, eps=0.2
 			else:
 				a = np.argmax(model.predict(np.identity(dim)[s:s + 1]))
 
+			# print(f"action: {a}")
+
 			action_price = prices.iloc[int(num_time * time_horizon / num_times), a]
 
 			# calculate reward and new state
@@ -472,37 +478,43 @@ def keras_learning(num_episodes, path, is_buy, time_horizon, gamma=0.95, eps=0.2
 				cur_rew, volume_left = reward(action_price, prices.iloc[int(num_time * time_horizon / num_times) + t],
 											  volumes.iloc[int(num_time * time_horizon / num_times) + t],
 											  theoretical_price, volume_left)
-				cur_reward += cur_rew
+				cur_reward += cur_rew.item()
 			r = cur_reward
 			new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
 			num_time += 1
 			s_prime = to_state(num_time, new_vol_bucket)
 
-			print(f"dim = {dim}, s_prime = {s_prime}")
+			# print(f"dim = {dim}, num_time = {num_time}, new_vol_bucket = {new_vol_bucket}, s_prime = {s_prime}")
 
-			target = r + gamma * np.max(model.predict(np.identity(dim)[s_prime:s_prime + 1]))
+			if num_time < num_times:
+				target = r + gamma * np.max(model.predict(np.identity(dim)[s_prime:s_prime + 1]))
+			else:
+				target = -2000 * new_vol_bucket
 			target_vec = model.predict(np.identity(dim)[s:s + 1])[0]
 			target_vec[a] = target
 			model.fit(np.identity(dim)[s:s + 1], target_vec.reshape(-1, num_actions), epochs=1, verbose=0)
 			s = s_prime
 			r_sum += r
 
-		r_avg_list.append(r_sum / 1000)
+		r_list.append(r_sum)
+		v_list.append(volume_left)
 
 	model.save('keras_model')
+	print(f"Rewards:\n{r_list}")
+	print(f"Volume left:\n{v_list}")
 	# to load:
 	# model = keras.models.load_model('keras_model')
 	# state = to_state(0, num_volumes-1)
 	# model.predict(np.identity(dim)[state:state + 1])
 
 
-def keras_testing(is_buy, path=None, optpolicy=None):
+def keras_testing(is_buy, start_from_beginning, path=None):
 	dim = num_times * num_volumes
 	model = keras.models.load_model('keras_model')
 
 	rewards = 0
 	volume_left = total_volume
-	data_gen = get_data(is_buy, time_horizon, 1, path)
+	data_gen = get_data(is_buy, start_from_beginning, time_horizon, 1, path)
 	prices, volumes, midpoint = next(data_gen)  # get market data from the current time
 	theoretical_price = midpoint.iloc[0]
 
@@ -581,5 +593,7 @@ def keras_testing(is_buy, path=None, optpolicy=None):
 
 # Test keras model:
 
-keras_learning(10, "data/order_books/2012/IF1201.csv", True, time_horizon)
+keras_learning(1000, "data/order_books/2012/IF1201.csv", True, True, time_horizon)
+keras_testing(True, True, "data/order_books/2012/IF1201.csv")
+# simulation reward: 1.0537146696903235, volume_left: 0 (data 1201)
 

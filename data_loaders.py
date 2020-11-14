@@ -5,12 +5,15 @@ import os
 import glob
 
 
-def read(path, is_buy=True, is_dp=True, slice_size=50, num_slices=50):
+def read(path, is_buy=True, is_dp=True, start_from_beginning=False, slice_size=50, num_slices=50):
     #path.seek(0, os.SEEK_END)
     #print(path)
     #totallen = open(path, 'r').tell()
     totallen = len(pd.read_csv(path).iloc[:, 1:])
-    df = pd.read_csv(path, skiprows=range(1, totallen - slice_size*num_slices)).iloc[:, 1:]
+    if start_from_beginning:
+        df = pd.read_csv(path).head(slice_size*num_slices).iloc[:, 1:]
+    else:
+        df = pd.read_csv(path, skiprows=range(1, totallen - slice_size*num_slices)).iloc[:, 1:]
     #print(len(df))
     #print(df.head())
     #df = pd.read_csv(path).iloc[:, 1:].head(no_obs)
