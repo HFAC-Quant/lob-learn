@@ -45,7 +45,7 @@ def generate_data(function, path=None, *args, **kwargs):
                    for x in glob.glob( '*/**.csv' )]
     else:
         PATHS = [path]
-    print(f"PATHS: {sorted(PATHS)}")
+    # print(f"PATHS: {sorted(PATHS)}")
     # os.chdir( '../..' )
     for t in sorted(PATHS):
         yield function(t, *args, **kwargs)
