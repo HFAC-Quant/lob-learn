@@ -27,9 +27,7 @@ actions = []
 Q_EPSILON = 0.000001    # defines convergence epsilon for qvals and DP
 DP_EPSILON = 0.003
 
-# TODO June 28: Use Keras/diff model
-# TODO Nov 7: Add num_slices argument to each generate_data call
-# TODO Nov 14: Finish comparing Keras with Q learning and DP
+# TODO Final: Run trainsimulate with Keras but with train/simul data from end of files and then compare
 
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
@@ -76,10 +74,10 @@ def get_data(is_buy, start_from_beginning, time_horizon, num_slices, path=None):
 			for slice in file:
 				yield (slice.iloc[:, 0:5], slice.iloc[:, 5:10], slice.iloc[:, 10:11])
 
-def simulate(is_buy, path=None, optpolicy=None):
+def simulate(is_buy, start_from_beginning, num_episodes, path=None, optpolicy=None):
 	rewards = 0
 	volume_left = total_volume
-	data_gen = get_data(path, is_buy, time_horizon)
+	data_gen = get_data(is_buy, start_from_beginning, time_horizon, 1, path)
 	prices, volumes, midpoint = next(data_gen)  # get market data from the current time
 	theoretical_price = midpoint.iloc[0]
 
@@ -99,11 +97,11 @@ def simulate(is_buy, path=None, optpolicy=None):
 
 		rewards += cur_reward
 	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
-	return rewards, volume_left
+	return rewards.item(), volume_left
 
 
-def simulate_set_and_leave(path, is_buy, critical_time_left=int(0.2*time_horizon), price=None):
-	data_gen = get_data(path, is_buy, time_horizon)
+def simulate_set_and_leave(is_buy, start_from_beginning, critical_time_left=int(0.2*time_horizon), path=None, price=None):
+	data_gen = get_data(is_buy, start_from_beginning, time_horizon, 1, path)
 	prices, volumes, midpoint = next(data_gen)
 	theoretical_price = midpoint.iloc[0]
 	rewards = 0
@@ -128,7 +126,7 @@ def simulate_set_and_leave(path, is_buy, critical_time_left=int(0.2*time_horizon
 		rewards += cur_rew
 
 	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
-	return rewards, volume_left
+	return rewards.item(), volume_left
 
 
 # def qsimulate(algo, is_buy, qvals=None, optpolicy=None):
@@ -168,8 +166,8 @@ def reward(action_price, prices, volumes, midpoint, volume_left): #assumes is_bu
 					break
 	return cur_reward/midpoint, volume_left
 
-def dp(path, is_buy, num_iter=1):
-	data_gen = get_data(path, is_buy, time_horizon)
+def dp(is_buy, start_from_beginning, num_episodes, path=None):
+	data_gen = get_data(is_buy, start_from_beginning, time_horizon, num_episodes, path)
 	dptable = np.zeros((num_times + 1,num_volumes,num_actions)) #num_times + 1 for the penalty if you run out of time and there's still vol and OOB
 	volume_left = total_volume
 	time_left = time_horizon
@@ -181,7 +179,7 @@ def dp(path, is_buy, num_iter=1):
 
 
 	dptable_last = dptable.copy()
-	for i in range(num_iter):
+	for i in range(num_episodes):
 		prices, volumes, midpoint = next(data_gen)
 		theoretical_price = midpoint.iloc[0]
 		for num_time in range(num_times - 1,-1,-1): #num_time is time that has elapsed (in buckets)
@@ -231,7 +229,7 @@ def dp(path, is_buy, num_iter=1):
 		print(f"Training run {i}")
 		print(f"Relative norm: {np.linalg.norm(dptable - dptable_last)/np.linalg.norm(dptable)}")
 
-		if np.linalg.norm(dptable - dptable_last)/np.linalg.norm(dptable) < DP_EPSILON and i > 0.1 * num_iter:
+		if np.linalg.norm(dptable - dptable_last)/np.linalg.norm(dptable) < DP_EPSILON and i > 0.1 * num_episodes:
 			print(f"Breaking at iteration {i}")
 			break
 
@@ -357,16 +355,16 @@ def to_optpolicy(valuetable):
 	optpolicy = np.argmax(valuetable[:-1], axis=2)
 	return optpolicy
 
-def training(path, discountrate, learningrate, num_iter=1000):
+def qlearning_training(is_buy, start_from_beginning, discountrate, learningrate, num_episodes=1000, path=None):
 	qvals = np.zeros(shape=(num_times + 1, num_volumes, num_actions))
 	for volume_bucket in range(1,num_volumes): # what if vol_left is > 0 but in the first vol bucket?
 		for action in range(num_actions):
 			qvals[num_times][volume_bucket][action] = -2000 * volume_bucket 
 
-	data_gen = get_data(path, is_buy, time_horizon)
+	data_gen = get_data(is_buy, start_from_beginning, time_horizon, num_episodes, path)
 
 	qvals_last = qvals.copy()
-	for i in range(num_iter): # train on contiguous blocks of data
+	for i in range(num_episodes): # train on contiguous blocks of data
 		#global actions
 		
 		prices, volumes, midpoint = next(data_gen) # get market data from the current time
@@ -375,7 +373,7 @@ def training(path, discountrate, learningrate, num_iter=1000):
 		print(f"Training run {i}")
 		print(f"Relative norm: {np.linalg.norm(qvals - qvals_last)/np.linalg.norm(qvals)}")
 
-		if np.linalg.norm(qvals - qvals_last)/np.linalg.norm(qvals) < Q_EPSILON and i > 0.1 * num_iter:
+		if np.linalg.norm(qvals - qvals_last)/np.linalg.norm(qvals) < Q_EPSILON and i > 0.1 * num_episodes:
 			print(f"Breaking at iteration {i}")
 			break
 
@@ -390,38 +388,57 @@ def training(path, discountrate, learningrate, num_iter=1000):
 	#print("actions:",actions)
 	return qvals
 
-
-
 def train_simulate():
-	SAMPLE_PATH_LST = ['data/order_books/2011/IF1101.csv','data/order_books/2012/IF1201.csv']
-	#'data/order_books/2013/IF1301.csv','data/order_books/2014/IF1401.csv']
-
-	# rewards = {path:[] for path in SAMPLE_PATH_LST}
-	# volume_left = {path:[] for path in SAMPLE_PATH_LST}
-
-	# df = pd.DataFrame(columns=['Training Path','Simulation Path','Q-Value Rewards','Q-Value Volume Left',
-	# 	'DP Rewards','DP Volume Left','Set and Leave Rewards','Set and Leave Volume Left'])
+	SAMPLE_PATH_LST = ['data/order_books/2011/IF1101.csv','data/order_books/2012/IF1201.csv',
+					   'data/order_books/2013/IF1301.csv','data/order_books/2014/IF1401.csv']
 
 	dflist = []
 	for counter,trainpath in enumerate(SAMPLE_PATH_LST):
-		training(trainpath, discountrate=0.1, learningrate=0.6, num_iter=180)
+		qlearning_training(True, False, 0.1, 0.6, num_episodes=180, path=trainpath)
 		qvals = np.load("qvals.npy")
-		dp(trainpath, is_buy=True, num_iter=5)
+		dp(True, False, 5, path=trainpath)
 		dptable = np.load("dptable.npy")
+		keras_learning(True, False, 180, path=trainpath)
+		kmodel = keras.models.load_model('keras_model')
+
 		for simulpath in SAMPLE_PATH_LST:
-			qrewards, qvolume_left = simulate(simulpath, is_buy=True, optpolicy=to_optpolicy(qvals))
-			dprewards, dpvolume_left = simulate(simulpath, is_buy=True, optpolicy=to_optpolicy(dptable))
-			slrewards, slvolume_left = simulate_set_and_leave(simulpath, is_buy=True)
+			qrewards, qvolume_left = simulate(True, False, 1, path=simulpath, optpolicy=to_optpolicy(qvals))
+			dprewards, dpvolume_left = simulate(True, False, 1, path=simulpath, optpolicy=to_optpolicy(dptable))
+			slrewards, slvolume_left = simulate_set_and_leave(True, False, path=simulpath)
+			krewards, kvolume_left = keras_testing(True, False, path=simulpath, model=kmodel)
 			dftemp = pd.DataFrame({'Training Path':trainpath, 'Simulation Path':simulpath,
 				'Q-Value Rewards':qrewards,'Q-Value Volume Left':qvolume_left,
-				'DP Rewards':dprewards,'DP Volume Left':dpvolume_left,'Set and Leave Rewards':slrewards,
-				'Set and Leave Volume Left':slvolume_left})
+				'DP Rewards':dprewards,'DP Volume Left':dpvolume_left, 'Keras Rewards':krewards,
+				'Keras Volume Left':kvolume_left, 'Set and Leave Rewards':slrewards,
+				'Set and Leave Volume Left':slvolume_left}, index=[0])
 			dflist.append(dftemp)
 		df = pd.concat(dflist).sort_values(['Training Path','Simulation Path'],ascending=True)
 		strings = ['trainpath1101','trainpath1201','trainpath1301','trainpath1401']
-		df.to_csv('trainsimulate0726_' + strings[counter] + '.csv')
+		df.to_csv('trainsimulate1128_' + strings[counter] + '.csv')
 	return df
 
+
+# def train_simulate_keras():
+# 	df = pd.read_csv("trainsimulate0726_v2_trainpath1401.csv")
+# 	SAMPLE_PATH_LST = ['data/order_books/2011/IF1101.csv', 'data/order_books/2012/IF1201.csv',
+# 					   'data/order_books/2013/IF1301.csv','data/order_books/2014/IF1401.csv']
+#
+# 	reward_list = []
+# 	volume_left_list = []
+#
+# 	for trainpath in SAMPLE_PATH_LST:
+# 		keras_learning(1000, trainpath, True, True, time_horizon)
+# 		for simulpath in SAMPLE_PATH_LST:
+# 			reward, volume_left = keras_testing(True, True, simulpath)
+# 			reward_list.append(reward)
+# 			volume_left_list.append(volume_left)
+#
+# 	df['Keras Rewards'] = reward_list
+# 	df['Keras Volume Left'] = volume_left_list
+#
+# 	df.to_csv('trainsimulate1128.csv')
+#
+# 	return df
 
 
 def to_state(time_bucket, volume_bucket):
@@ -436,7 +453,7 @@ def to_buckets(state):
 	return (time_bucket, volume_bucket)
 
 
-def keras_learning(num_episodes, path, is_buy, start_from_beginning, time_horizon, gamma=0.95, eps=0.2, decay_factor=0.99):
+def keras_learning(is_buy, start_from_beginning, num_episodes, gamma=0.95, eps=0.2, decay_factor=0.99, path=None):
 	dim = num_times * num_volumes
 	model = keras.Sequential()
 	model.add(keras.layers.InputLayer(batch_input_shape=(1,dim)))
@@ -508,9 +525,10 @@ def keras_learning(num_episodes, path, is_buy, start_from_beginning, time_horizo
 	# model.predict(np.identity(dim)[state:state + 1])
 
 
-def keras_testing(is_buy, start_from_beginning, path=None):
+def keras_testing(is_buy, start_from_beginning, path=None, model=None):
 	dim = num_times * num_volumes
-	model = keras.models.load_model('keras_model')
+	if model is None:
+		model = keras.models.load_model('keras_model')
 
 	rewards = 0
 	volume_left = total_volume
@@ -539,7 +557,7 @@ def keras_testing(is_buy, start_from_beginning, path=None):
 		s = to_state(num_time, new_vol_bucket)
 
 	print(f"simulation reward: {rewards.item()}, volume_left: {volume_left}")
-	return rewards, volume_left
+	return rewards.item(), volume_left
 
 #df = train_simulate()
 #df.to_csv('trainsimulate0726_total.csv')
@@ -593,7 +611,12 @@ def keras_testing(is_buy, start_from_beginning, path=None):
 
 # Test keras model:
 
-keras_learning(1000, "data/order_books/2012/IF1201.csv", True, True, time_horizon)
-keras_testing(True, True, "data/order_books/2012/IF1201.csv")
+# keras_learning(1000, "data/order_books/2012/IF1201.csv", True, True, time_horizon)
+# keras_testing(True, True, "data/order_books/2014/IF1104.csv")
 # simulation reward: 1.0537146696903235, volume_left: 0 (data 1201)
 
+# train_simulate_keras()
+
+
+# Final comparison
+train_simulate()
