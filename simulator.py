@@ -24,8 +24,8 @@ time_horizon = 50 #1000
 is_buy = True
 is_dp = True
 actions = []
-Q_EPSILON = 0.000001    # defines convergence epsilon for qvals and DP
-DP_EPSILON = 0.003
+Q_EPSILON = 0.00000001    # defines convergence epsilon for qvals and DP
+DP_EPSILON = 0.00003
 
 # period = 30 #30 seconds
 # timedelta = .5 #time btw prices in order book
