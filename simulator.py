@@ -225,7 +225,7 @@ def dp(is_buy, start_from_beginning, num_episodes, path=None):
 				# print(f"run {i} dptable:", dptable)
 
 		if i % 10 == 0:
-			print(f"Training run {i}")
+			print(f"Episode {i+1} of {num_episodes}")
 		# print(f"Relative norm: {np.linalg.norm(dptable - dptable_last)/np.linalg.norm(dptable)}")
 
 		if np.linalg.norm(dptable - dptable_last)/np.linalg.norm(dptable) < DP_EPSILON and i > 0.1 * num_episodes:
@@ -370,7 +370,7 @@ def qlearning_training(is_buy, start_from_beginning, discountrate, learningrate,
 		qvals = qlearning(prices, volumes, midpoint, discountrate, learningrate, qvals)
 
 		if i % 50 == 0:
-			print(f"Training run {i}")
+			print(f"Episode {i+1} of {num_episodes}")
 		# print(f"Relative norm: {np.linalg.norm(qvals - qvals_last)/np.linalg.norm(qvals)}")
 
 		if np.linalg.norm(qvals - qvals_last)/np.linalg.norm(qvals) < Q_EPSILON and i > 0.1 * num_episodes:
@@ -480,7 +480,7 @@ def keras_learning(is_buy, start_from_beginning, num_episodes, gamma=0.95, eps=0
 		s = to_state(0, num_volumes - 1)  # start at time bucket 0 and highest volume bucket
 		eps *= decay_factor
 		if i % 50 == 0:
-			print("Episode {} of {}".format(i+1, num_episodes))
+			print(f"Episode {i+1} of {num_episodes}")
 		r_sum = 0
 
 		num_time = 0   # this is a bucket
@@ -559,7 +559,7 @@ def keras_testing(is_buy, start_from_beginning, path=None, model=None):
 										  volumes.iloc[int(num_time * time_horizon / num_times) + t], theoretical_price,
 										  volume_left)
 			cur_reward += cur_rew
-			print(cur_reward)
+			# print(cur_reward)
 		rewards += cur_reward
 
 		new_vol_bucket = max(math.ceil(volume_left / total_volume * num_volumes) - 1, 0)
